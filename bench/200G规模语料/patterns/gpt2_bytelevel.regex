@@ -1,0 +1,3 @@
+# GPT-2 / HF tokenizers ByteLevel(use_regex=True) 的预分词正则（与 HF 逐字节对齐验证过）
+# 用法：bbpe train --input X --vocab 150256 --pattern "$(cat 此文件 | grep -v ^#)" --output Y
+'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+

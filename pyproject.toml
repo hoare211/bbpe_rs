@@ -1,0 +1,45 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "bbpe_tokenizer"
+version = "0.1.0"
+description = "A high-performance byte-level BPE tokenizer with a Rust core and Python wrapper."
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0" }
+requires-python = ">=3.8"
+authors = [{ name = "bbpe_rs contributors" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+keywords = ["bpe", "tokenizer", "nlp", "text-processing"]
+# torch / transformers 只是可选依赖：它们唯一的使用者是 `logits_processor`
+# （UTF8StrictLogitsProcessor，推理侧的 UTF-8 严格解码约束）。默认安装只拉
+# jinja2；需要 logits 处理器时用 `pip install bbpe_tokenizer[logits]`。
+dependencies = [
+    "jinja2>=3.1.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/hoare211/bbpe_rs"
+Repository = "https://github.com/hoare211/bbpe_rs"
+Issues = "https://github.com/hoare211/bbpe_rs/issues"
+
+[project.optional-dependencies]
+logits = [
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+]
+
+[tool.maturin]
+# 告诉 maturin 你的纯 Python 代码在哪里
+python-source = "python"
+# 指定 Rust 编译出来的库叫什么名字，以及它会被放在 Python 包的哪个层级下
+module-name = "bbpe_tokenizer.bbpe_rs"

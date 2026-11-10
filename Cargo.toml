@@ -1,0 +1,177 @@
+[package]
+name = "bbpe_rs"
+version = "0.1.0"
+edition = "2024"
+# nit4：edition 2024 要求 Rust ≥ 1.85。声明 rust-version（MSRV）后，
+#       低版本工具链会在构建时给出明确错误，而不是一堆难懂的语法报错。
+rust-version = "1.85"
+description = "A byte-level BPE tokenizer trainer and encoder for very large corpora"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/hoare211/bbpe_rs"
+homepage = "https://github.com/hoare211/bbpe_rs"
+readme = "README.md"
+keywords = ["bpe", "tokenizer", "nlp", "text-processing", "vocabulary"]
+categories = ["text-processing", "command-line-utilities"]
+# bin 全部显式声明，关闭自动发现避免归属不明
+autobins = false
+
+[lib]
+# 同时编译为 Rust 库 (rlib) 和 Python 动态链接库 (cdylib)
+crate-type = ["rlib", "cdylib"]
+name = "bbpe_rs"
+
+[features]
+# 默认带上 Python 绑定（maturin develop 用）。
+# 纯 CLI 发布请用 --no-default-features：不拉 pyo3，编译更快、产物更小。
+default = ["python-extension"]
+# 仅在需要编译为 Python 扩展时激活 pyo3
+python-extension = ["pyo3"]
+
+# ---------- 统一入口 ----------
+[[bin]]
+name = "bbpe"
+
+# ---------- 主命令（与 `bbpe <子命令>` 等价，同一份实现）----------
+# `test = false`：下面这些 bin 都是 8–13 行的转发壳，本身没有单测。默认行为
+# 会让 `cargo test` 为**每个 bin 各链接一个 50–60MB 的 unit-test 夹具**
+# （实测 19 个 bin × 多套 feature 组合把 target/debug/deps 撑到 14G）。
+# 关掉后 `cargo build`、`cargo clippy --all-targets`、release.sh 的 T-10
+# （`cargo build --release` + 文件存在性校验）全部不受影响。
+[[bin]]
+name = "train"
+test = false
+
+[[bin]]
+name = "sample"
+test = false
+
+[[bin]]
+name = "sweep"
+test = false
+
+[[bin]]
+name = "cut"
+test = false
+
+[[bin]]
+name = "inspect"
+test = false
+
+[[bin]]
+name = "compare"
+test = false
+
+[[bin]]
+name = "encode"
+test = false
+
+[[bin]]
+name = "decode"
+test = false
+
+# ---------- 过渡别名（打印提示后转发到同一实现；下个大版本移除）----------
+[[bin]]
+name = "train_vocab"
+test = false
+
+[[bin]]
+name = "sample_corpus"
+test = false
+
+[[bin]]
+name = "sweep_vocab"
+test = false
+
+[[bin]]
+name = "cut_vocab"
+test = false
+
+[[bin]]
+name = "inspect_model"
+test = false
+
+[[bin]]
+name = "compare_merges"
+test = false
+
+# ---------- 通用基准 / 进阶工具 ----------
+[[bin]]
+name = "bench"
+
+[[bin]]
+name = "bbpe_jsonl_bench"
+
+[[bin]]
+name = "run_real_data"
+
+[[bin]]
+name = "freeze_probe"
+
+# ---------- 历史评审测试 ----------
+# 已合并到 `tests/reviews/main.rs` 这**一个**测试目标（名为 `reviews`）。
+# 各期文件（review_YYYYMMDD.rs）放在 tests/reviews/ 子目录下作为模块编入，
+# 避免"一个评审文件 = 一个 50MB+ 测试二进制"。新增评审请见该文件顶部说明。
+
+[dependencies]
+# 2026-11-07 依赖升级实测（41MB jsonl / vocab 8000 / 本机）：
+#   训练中位 4.046s → 3.742s（-7.5%），提升来自 regex 1.13 + memchr 2.8.3 +
+#   sonic-rs 0.5.10（预分词扫描与 JSON 解析）；编码吞吐持平（3.05 → 3.03 MB/s，
+#   噪声内）。训练结果 merges 指纹完全一致，两套 cargo test / clippy / pytest 全绿。
+#   结论：收益集中在底层扫描原语，升级后必须做确定性对拍（见 docs/reviews/README.md）。
+rayon = "1.12"           # 工业级并行与树状规约
+rustc-hash = "2.1"      # FxHashMap 极速哈希
+fancy-regex = "0.18"     # C2：原 "*"，钉住上界（见下方说明）
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.150"
+indicatif = "0.18.4"      # CLI 进度条
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+regex = "1.12.4"
+# n5：dhat 已从依赖移除 —— 其 Profiler 与 #[global_allocator] 在 run_real_data
+#     中早已注释，从未启用。需要堆剖析时再临时加回：`cargo add dhat`。
+# n4：better_mimalloc_rs 同样移除 —— trainer.rs 的 #[global_allocator] 已注释，
+#     mimalloc 从未生效。启用它属独立的全局分配器决策，不在本次修复范围。
+# C2：下面四个原本写作 `= "*"`。`Cargo.lock` + release.sh 的 `--locked` 兜住了
+# **发布**产物可复现，但**开发期**任何一次 `cargo update` 都可能拉进不兼容的
+# 大版本 —— 而它们恰是耦合最深、测试覆盖最薄的部分（`sonic-rs` 0.5→0.6 的 API
+# 破坏会直接打断 `reader.rs` 的 `get_from_slice` / `as_raw_str` / `from_slice`）。
+# 钉住当前已验证的 minor 版本上界。
+aho-corasick = "1.1"
+sonic-rs = "0.5"
+ahash = "0.8"
+ctrlc = "3"
+
+# 设置 pyo3 为可选依赖
+[dependencies.pyo3]
+version = "0.29.0"
+features = ["extension-module"]
+optional = true
+
+# ---------- 构建产物体积治理 ----------
+# 背景（2026-11-08 实测）：target 目录一度达 23G（debug 17G / release 6.1G）。
+# 主因是默认 debug=2 让每个 bin/测试二进制达 49–62MB（其中约 90% 是调试信息），
+# 再乘以 19 个 bin × 多套 feature 组合，且 cargo 从不回收历史哈希产物。
+[profile.dev]
+# 0 = 最省（单二进制约 7MB，按下述配置实测）；需要 backtrace 带行号时改成
+# "line-tables-only"（体积约为 0 的 2–3 倍，仍远小于默认的 debug=2）。
+debug = 0
+# 增量编译实测累积 695 个会话目录 / 2.5G，cargo 不会自动清理。
+# 需要时临时开：CARGO_INCREMENTAL=1 cargo test
+incremental = false
+
+# 若把上面的 debug 调回非 0，这条让**依赖**不带调试信息（体积大头在依赖侧）。
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+# 原为 1（仅行号表）。发布产物不再需要调试信息；剖析时临时覆盖：
+#   CARGO_PROFILE_RELEASE_DEBUG=1 cargo build --release
+debug = 0
+# m3：原 `force-frame-pointers = true` 被 cargo 判定为
+#     "unused manifest key: profile.release.force-frame-pointers"（实测 cargo 1.98.1），
+#     即该键不被识别、配置从未生效。若确实需要强制帧指针（perf/剖析），
+#     请改用环境变量或 `.cargo/config.toml`：
+#       [build]
+#       rustflags = ["-C", "force-frame-pointers=yes"]
+#     注意该 flag 会同时作用于 dev 构建，通常只应在剖析时临时开启。

@@ -1,0 +1,33 @@
+# Rust build output
+/target/
+
+# Release artifacts
+/dist/
+*.whl
+
+# Local corpora, models and scratch output
+/data/
+/output/
+/tmp/
+*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Profiling output
+perf.data*
+profile*.gz
+*.folded
+dhat-heap.json
