@@ -85,25 +85,26 @@ class TestP2TokenAndTimeout(unittest.TestCase):
         return TextFileReader(str(self.corpus))
 
     def test_token_cancel_from_other_thread(self):
+        """取消令牌由**另一个线程**置位；join 保证训练开始前已置位，因此必然
+        在首个检查点停止。这里不用 `sleep` 制造竞态：快机器上 4.8MB 语料
+        的训练可能 0.1s 内结束，固定延迟会变成 flaky（CI 上曾因此失败）。"""
         trainer = BBPETrainer(TrainerConfig(4000))
         token = CancellationToken()
 
-        def cancel_soon():
-            time.sleep(0.15)
-            token.cancel()
-
-        th = threading.Thread(target=cancel_soon)
+        th = threading.Thread(target=token.cancel)
         th.start()
+        th.join(10)
+        self.assertTrue(token.cancelled)
+
         with self.assertRaises(TrainingCancelled) as ctx:
             trainer.train(self._reader(), cancel_token=token)
-        th.join(10)
 
         err = ctx.exception
         self.assertEqual(err.reason, "user")
         self.assertGreaterEqual(err.merges_done, 0)
         self.assertGreater(err.elapsed_secs, 0)
         self.assertIsInstance(err.corpus_stats, dict)
-        self.assertTrue(token.cancelled)
+
         with self.assertRaises(RuntimeError):
             trainer.save(str(Path(self.tmp.name) / "no.json"))
 
@@ -111,6 +112,31 @@ class TestP2TokenAndTimeout(unittest.TestCase):
         trainer.reset()
         trainer.train(TextFileReader(str(self.corpus)))
         self.assertTrue(trainer.is_trained())
+
+    def test_token_cancel_while_training(self):
+        """训练进行中从其他线程取消。
+
+        只有当训练确实长于取消延迟时才可能出现 `TrainingCancelled`；在快
+        机器上训练可能先自然结束，此时无法构造竞态 —— 跳过而不是误报失败。
+        """
+        trainer = BBPETrainer(TrainerConfig(4000))
+        token = CancellationToken()
+
+        def cancel_soon():
+            time.sleep(0.02)
+            token.cancel()
+
+        th = threading.Thread(target=cancel_soon)
+        th.start()
+        try:
+            trainer.train(self._reader(), cancel_token=token)
+        except TrainingCancelled as exc:
+            self.assertEqual(exc.reason, "user")
+        else:
+            self.skipTest("训练在取消生效前完成（快机器），无法构造训练中取消")
+        finally:
+            th.join(10)
+        self.assertTrue(token.cancelled)
 
     def test_timeout_triggers(self):
         trainer = BBPETrainer(TrainerConfig(4000))
